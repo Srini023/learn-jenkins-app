@@ -2,14 +2,35 @@ pipeline {
     agent any
 
     environment {
-        NETLIFY_SITE_ID = 'f9614743-6a38-49d6-a871-59855a7cad40'
-        NETLIFY_AUTH_TOKEN = credentials('netlify-token')
+        AWS_DEFAULT_REGION = 'us-east-1'
     }
 
     stages {
+      
+      
+        stage('Deploy to AWS') {
+            agent {
+                docker {
+                    image 'amazon/aws-cli'
+                    reuseNode true
+                    args "--entrypoint=''"
+                }
+            }
+        }
 
-        
-        stage ('Build') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'SriJenkinsAWS', passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID')]) {
+                sh '''
+                    aws --version
+                    aws ecs register-task-definition --cli-input-json file://AWSs/taskdefinition-prod.json
+                '''
+                }
+             
+            }
+        }
+    }
+
+            stage ('Build') {
             agent {
                 docker {
                     image 'node:18-alpine'
@@ -28,100 +49,3 @@ pipeline {
                  '''  
                 }
         }
-        
-        stage('AWS') {
-            agent {
-                docker {
-                    image 'amazon/aws-cli'
-                    args "--entrypoint=''"
-                }
-            }
-
-            environment {
-                AWS_S3_BUCKET = 'srijenkins0904'
-            }
-
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'SriJenkinsAWS', passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID')]) {
-                sh '''
-                    aws --version
-                    aws s3 sync build s3://$AWS_S3_BUCKET
-
-                '''
-                }
-             
-            }
-        }
-
-                stage ('run tests') {
-                    parallel {
-                
-                        stage ('Test') {
-                            agent {
-                                 docker {
-                                    image 'node:18-alpine'
-                                    reuseNode true
-                        }
-                    }
-                    steps {
-                        sh '''
-                            #test -f build/index.html
-                            npm test
-                        '''
-                    }
-            post {
-                always {
-                    junit 'jest-results/junit.xml'
-                 }
-            }    
-                }  
-
-                stage ('E2E') {
-                    agent {
-                        docker {
-                            image 'mcr.microsoft.com/playwright:v1.39.0-jammy'
-                            reuseNode true
-                        }
-                    }
-
-                    steps {
-                        sh ''' 
-                            npm install serve
-                            node_modules/.bin/serve -s build &
-                            sleep 10
-                            npx playwright test --reporter=html
-                        '''
-                    }
-
-                    post {
-                        always {
-                            publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, keepAll: false, reportDir: 'playwright-report', reportFiles: 'index.html', reportName: 'Playright HTML Report', reportTitles: '', useWrapperFileDirectly: true])
-                        }
-                    }
-                }
-             }
-
-        }  
-    
-            stage ('Deploy') {
-                agent {
-                    docker {
-                        image 'node:18-alpine'
-                        reuseNode true
-                }
-            }
-
-                steps {
-                    sh '''
-                        npm install netlify-cli
-                        node_modules/.bin/netlify --version
-                        echo "Deploying to production. Site ID: $NETLIFY_SITE_ID"
-                        node_modules/.bin/netlify status
-                        node_modules/.bin/netlify deploy --dir=build --prod
-                 '''  
-                }
-        }             
-    }
-    
-}
-

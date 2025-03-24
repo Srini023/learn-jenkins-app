@@ -23,7 +23,6 @@ pipeline {
                     aws --version
                     aws ecs register-task-definition --cli-input-json file://AWSs/taskdefinition-prod.json
                 '''
-                }
             }
             }
         }
@@ -48,3 +47,4 @@ pipeline {
                  '''  
                 }
         }
+}
